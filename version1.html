@@ -1,0 +1,838 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>YECC Canteen Debt List</title>
+    
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'sans-serif'] },
+                    colors: {
+                        navy: { 800: '#1a2a40', 900: '#0f172a' },
+                        gold: { 400: '#fbbf24', 500: '#f59e0b' },
+                        appbg: '#f8fafc'
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        body { background-color: #f8fafc; -webkit-tap-highlight-color: transparent; overscroll-behavior-y: none; }
+        ::-webkit-scrollbar { width: 4px; height: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        
+        /* Modals & Animations */
+        .modal-bg { opacity: 0; pointer-events: none; transition: opacity 0.3s ease; }
+        .modal-bg.active { opacity: 1; pointer-events: auto; }
+        .modal-content { transform: translateY(100%); transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
+        .modal-bg.active .modal-content { transform: translateY(0); }
+        
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .spin { animation: spin 1s linear infinite; }
+        
+        @keyframes slideInUp { from { transform: translate(-50%, 100%); opacity: 0; } to { transform: translate(-50%, 0); opacity: 1; } }
+        .toast-enter { animation: slideInUp 0.3s forwards; }
+        
+        .pb-safe { padding-bottom: env(safe-area-inset-bottom, 20px); }
+        .pb-safe-nav { padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 80px); }
+    </style>
+</head>
+<body class="text-gray-800 antialiased font-sans h-screen flex flex-col overflow-hidden">
+
+    <header class="bg-navy-900 text-white pt-safe sticky top-0 z-20 shadow-md">
+        <div class="px-5 py-4 flex justify-between items-center">
+            <div class="flex items-center gap-3">
+                <!-- Updated Logo -->
+                <div class="w-11 h-11 bg-white rounded-xl flex items-center justify-center shadow-sm overflow-hidden border-2 border-white/20">
+                    <img src="https://yeccedu.com.mm/assets/img/yecc%20dark%20blue.jpg" alt="Logo" class="w-full h-full object-cover">
+                </div>
+                <div>
+                    <!-- Updated Title -->
+                    <h1 class="text-xl font-black leading-tight text-white tracking-tight">YECC Canteen</h1>
+                    <p class="text-[11px] text-gold-400 uppercase tracking-widest font-bold mt-0.5">Debt List</p>
+                </div>
+            </div>
+            <button onclick="fetchData()" class="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center active:bg-white/20 transition-colors">
+                <i id="refreshIcon" class="fa-solid fa-rotate-right text-gold-400"></i>
+            </button>
+        </div>
+        
+        <!-- Tab Navigation (Unpaid / Paid / All) -->
+        <div class="flex px-2 pt-1 border-t border-white/10">
+            <button onclick="setDebtTab('unpaid')" id="tab-unpaid" class="flex-1 py-3 text-sm font-bold border-b-2 border-gold-400 text-gold-400 transition-colors">
+                Unpaid
+            </button>
+            <button onclick="setDebtTab('paid')" id="tab-paid" class="flex-1 py-3 text-sm font-bold border-b-2 border-transparent text-gray-400 transition-colors">
+                Paid
+            </button>
+            <button onclick="setDebtTab('all')" id="tab-all" class="flex-1 py-3 text-sm font-bold border-b-2 border-transparent text-gray-400 transition-colors">
+                All
+            </button>
+        </div>
+    </header>
+
+    <div class="bg-white px-4 py-3 sticky z-10 shadow-sm border-b border-gray-100 flex flex-col gap-2">
+        <!-- Search Box -->
+        <div class="relative w-full">
+            <i class="fa-solid fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+            <input type="text" id="searchInput" placeholder="Search by student name..." onkeyup="renderDebts()" class="w-full bg-appbg border border-gray-200 text-sm font-medium rounded-xl py-2 pl-9 pr-3 outline-none focus:border-navy-900 focus:ring-1 transition-all">
+        </div>
+        
+        <!-- Filters (Type, Year, Sort) -->
+        <div class="grid grid-cols-12 gap-2">
+            <!-- New: Type Filter (All/Canteen/Kitchen) -->
+            <div class="relative col-span-4">
+                <select id="typeFilter" onchange="renderDebts()" class="w-full bg-appbg border border-gray-200 text-xs sm:text-sm rounded-xl py-2 pl-2 sm:pl-3 pr-6 outline-none appearance-none font-bold text-navy-900">
+                    <option value="all">All Types</option>
+                    <option value="Canteen">Canteen</option>
+                    <option value="Kitchen">Kitchen</option>
+                </select>
+                <i class="fa-solid fa-chevron-down absolute right-2 sm:right-3 top-1/2 -translate-y-1/2 text-[10px] sm:text-xs text-gray-400 pointer-events-none"></i>
+            </div>
+            
+            <div class="relative col-span-4">
+                <select id="yearFilter" onchange="renderDebts()" class="w-full bg-appbg border border-gray-200 text-xs sm:text-sm rounded-xl py-2 pl-2 sm:pl-3 pr-6 outline-none appearance-none font-bold text-navy-900">
+                    <option value="all">All Grades</option>
+                    <option value="Year 6">Year 6</option>
+                    <option value="Year 7">Year 7</option>
+                    <option value="Year 8">Year 8</option>
+                    <option value="Year 9A">Year 9A</option>
+                    <option value="Year 9B1">Year 9B1</option>
+                    <option value="Year 9B2">Year 9B2</option>
+                    <option value="Year 10A">Year 10A</option>
+                    <option value="Year 10B">Year 10B</option>
+                    <option value="Year 10CIE">Year 10CIE</option>
+                    <option value="Year 11A">Year 11A</option>
+                    <option value="Year 11B">Year 11B</option>
+                    <option value="Year 11Se">Year 11Se</option>
+                    <option value="Staff">Staff</option>
+                    <option value="Other">Other</option>
+                </select>
+                <i class="fa-solid fa-chevron-down absolute right-2 sm:right-3 top-1/2 -translate-y-1/2 text-[10px] sm:text-xs text-gray-400 pointer-events-none"></i>
+            </div>
+            
+            <div class="relative col-span-4">
+                <select id="sortSelect" onchange="renderDebts()" class="w-full bg-appbg border border-gray-200 text-xs sm:text-sm rounded-xl py-2 pl-2 sm:pl-3 pr-6 outline-none appearance-none font-bold text-navy-900">
+                    <option value="newest">Newest</option>
+                    <option value="amount_high">$$ High</option>
+                    <option value="amount_low">$$ Low</option>
+                </select>
+                <i class="fa-solid fa-chevron-down absolute right-2 sm:right-3 top-1/2 -translate-y-1/2 text-[10px] sm:text-xs text-gray-400 pointer-events-none"></i>
+            </div>
+        </div>
+    </div>
+
+    <main class="flex-1 overflow-y-auto px-4 pt-4 pb-safe-nav bg-appbg" id="mainContainer">
+        <!-- Loading State -->
+        <div id="loadingState" class="flex flex-col items-center justify-center py-10 hidden">
+            <i class="fa-solid fa-circle-notch spin text-3xl text-navy-900 mb-3"></i>
+            <p class="text-gray-500 text-sm font-medium">Syncing data...</p>
+        </div>
+
+        <!-- Empty State -->
+        <div id="emptyState" class="flex flex-col items-center justify-center py-16 hidden">
+            <div class="w-20 h-20 bg-white rounded-full shadow-sm flex items-center justify-center text-gray-300 mb-4 border-2 border-dashed border-gray-200">
+                <i class="fa-solid fa-receipt text-3xl"></i>
+            </div>
+            <p class="text-navy-900 font-bold mb-1">No bills found</p>
+            <p class="text-gray-500 text-sm text-center px-6">No records match your filters, or the list is completely clear.</p>
+        </div>
+
+        <!-- System Error State -->
+        <div id="errorState" class="flex flex-col items-center justify-center py-10 hidden bg-red-50 rounded-2xl border border-red-100 p-6 mt-4">
+            <i class="fa-solid fa-triangle-exclamation text-3xl text-red-500 mb-3"></i>
+            <p class="text-red-800 font-bold mb-1">Connection Error</p>
+            <p id="errorText" class="text-red-600 text-xs text-center font-medium"></p>
+        </div>
+
+        <!-- Debts List Container -->
+        <div id="debtsContainer" class="space-y-4"></div>
+    </main>
+
+    <!-- Floating Add Button -->
+    <button onclick="openAddModal()" class="fixed bottom-8 right-5 w-14 h-14 bg-navy-900 text-gold-400 rounded-full shadow-lg flex items-center justify-center text-2xl active:scale-95 transition-transform z-20 hover:bg-navy-800 shadow-navy-900/40 border-2 border-white">
+        <i class="fa-solid fa-plus"></i>
+    </button>
+
+    <!-- Modal: Add New Debt -->
+    <div id="addModal" class="modal-bg fixed inset-0 z-50 bg-navy-900/60 backdrop-blur-sm flex items-end sm:items-center justify-center">
+        <div class="modal-content bg-white w-full sm:w-[400px] rounded-t-3xl sm:rounded-3xl p-6 pb-safe">
+            <div class="flex justify-between items-center mb-6">
+                <h3 class="text-xl font-black text-navy-900">New Bill Record</h3>
+                <button type="button" onclick="closeModals()" class="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center text-gray-500 active:bg-gray-200">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <form id="addDebtForm" onsubmit="handleAddDebt(event)" class="space-y-4">
+                <!-- Explicitly Ask Canteen or Kitchen -->
+                <div class="bg-appbg p-3 rounded-xl border border-gray-200 mb-2">
+                    <label class="block text-xs font-black text-navy-900 uppercase tracking-widest mb-2">Where is this debt from?</label>
+                    <div class="grid grid-cols-2 gap-2">
+                        <label class="relative flex items-center justify-center cursor-pointer">
+                            <input type="radio" name="addCatRadio" value="Canteen" class="peer sr-only" checked onchange="document.getElementById('addCategory').value = this.value">
+                            <div class="w-full py-3 bg-white border-2 border-gray-200 rounded-lg text-sm font-bold text-gray-500 peer-checked:border-blue-500 peer-checked:text-blue-700 peer-checked:bg-blue-50 text-center transition-all">
+                                <i class="fa-solid fa-utensils mb-1 block text-lg"></i> Canteen
+                            </div>
+                        </label>
+                        <label class="relative flex items-center justify-center cursor-pointer">
+                            <input type="radio" name="addCatRadio" value="Kitchen" class="peer sr-only" onchange="document.getElementById('addCategory').value = this.value">
+                            <div class="w-full py-3 bg-white border-2 border-gray-200 rounded-lg text-sm font-bold text-gray-500 peer-checked:border-orange-500 peer-checked:text-orange-700 peer-checked:bg-orange-50 text-center transition-all">
+                                <i class="fa-solid fa-bowl-food mb-1 block text-lg"></i> Kitchen
+                            </div>
+                        </label>
+                    </div>
+                    <input type="hidden" id="addCategory" value="Canteen">
+                </div>
+
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Student Name</label>
+                    <input type="text" id="addName" required placeholder="Enter student name..." class="w-full bg-appbg border border-gray-200 rounded-xl py-3 px-4 text-navy-900 font-bold focus:ring-2 focus:ring-navy-900 outline-none">
+                </div>
+                
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Year / Grade</label>
+                    <select id="addYear" class="w-full bg-appbg border border-gray-200 rounded-xl py-3 px-4 text-navy-900 font-bold focus:ring-2 focus:ring-navy-900 outline-none appearance-none">
+                        <option value="Year 6">Year 6</option>
+                        <option value="Year 7">Year 7</option>
+                        <option value="Year 8">Year 8</option>
+                        <option value="Year 9A">Year 9A</option>
+                        <option value="Year 9B1">Year 9B1</option>
+                        <option value="Year 9B2">Year 9B2</option>
+                        <option value="Year 10A">Year 10A</option>
+                        <option value="Year 10B">Year 10B</option>
+                        <option value="Year 10CIE">Year 10CIE</option>
+                        <option value="Year 11A">Year 11A</option>
+                        <option value="Year 11B">Year 11B</option>
+                        <option value="Year 11Se">Year 11Se</option>
+                        <option value="Staff">Staff</option>
+                        <option value="Other">Other</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Amount (MMK)</label>
+                    <div class="relative">
+                        <span class="absolute left-4 top-1/2 -translate-y-1/2 text-navy-900 font-black">K</span>
+                        <input type="number" id="addAmount" required min="1" inputmode="numeric" placeholder="0" class="w-full bg-appbg border border-gray-200 rounded-xl py-4 pl-10 pr-4 text-xl text-navy-900 font-black focus:ring-2 focus:ring-navy-900 outline-none">
+                    </div>
+                </div>
+
+                <button type="submit" class="w-full bg-navy-900 text-gold-400 font-black text-lg py-4 rounded-xl mt-4 active:scale-[0.98] transition-transform shadow-lg shadow-navy-900/30 flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-save"></i> Save Bill
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal: Increase Debt (Add to existing bill) -->
+    <div id="increaseModal" class="modal-bg fixed inset-0 z-50 bg-navy-900/60 backdrop-blur-sm flex items-end sm:items-center justify-center">
+        <div class="modal-content bg-white w-full sm:w-[400px] rounded-t-3xl sm:rounded-3xl p-6 pb-safe">
+            <div class="flex justify-between items-center mb-6">
+                <h3 class="text-xl font-black text-navy-900">Add to Existing Bill</h3>
+                <button type="button" onclick="closeModals()" class="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center text-gray-500 active:bg-gray-200">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <div class="bg-red-50 p-4 rounded-2xl mb-6 border border-red-100 flex items-center justify-between">
+                <div>
+                    <p class="text-xs text-red-600 font-bold uppercase tracking-wide mb-1">Student</p>
+                    <p id="incStudentName" class="font-black text-navy-900 text-lg"></p>
+                    <p class="text-[10px] text-red-500 mt-1 font-medium">Adding this increases their total debt.</p>
+                </div>
+                <div id="incCategoryBadge" class="text-xs font-black uppercase px-3 py-2 rounded-xl text-center shadow-sm">
+                    <!-- Dynamic Badge -->
+                </div>
+            </div>
+            <form onsubmit="handleIncreaseDebt(event)" class="space-y-4">
+                <input type="hidden" id="incDebtId">
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Additional Amount</label>
+                    <div class="relative">
+                        <span class="absolute left-4 top-1/2 -translate-y-1/2 text-navy-900 font-black">K</span>
+                        <input type="number" id="incAmount" required min="1" inputmode="numeric" placeholder="0" class="w-full bg-appbg border border-gray-200 rounded-xl py-4 pl-10 pr-4 text-xl text-navy-900 font-black focus:ring-2 focus:ring-red-500 outline-none">
+                    </div>
+                </div>
+                <button type="submit" class="w-full bg-red-500 text-white font-black py-4 rounded-xl mt-4 active:scale-[0.98] transition-transform shadow-lg shadow-red-500/30 flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-plus-circle"></i> Confirm Add Debt
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal: Make Payment -->
+    <div id="paymentModal" class="modal-bg fixed inset-0 z-[60] bg-navy-900/60 backdrop-blur-sm flex items-end sm:items-center justify-center">
+        <div class="modal-content bg-white w-full sm:w-[400px] rounded-t-3xl sm:rounded-3xl p-6 pb-safe">
+            <div class="flex justify-between items-center mb-6">
+                <h3 class="text-xl font-black text-navy-900">Make Payment</h3>
+                <button type="button" onclick="closeModals()" class="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center text-gray-500 active:bg-gray-200">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <div class="bg-navy-900 p-5 rounded-2xl mb-6 shadow-md relative overflow-hidden">
+                <div class="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full -mr-10 -mt-10 pointer-events-none"></div>
+                <div class="flex justify-between items-start">
+                    <div>
+                        <p class="text-xs text-blue-200 uppercase font-bold tracking-widest mb-1">Current Balance</p>
+                        <p id="payBalanceAmount" class="text-3xl font-black text-white mt-1">K 0</p>
+                        <p class="text-xs text-gold-400 mt-2 font-medium">Student: <span id="payStudentName" class="font-bold text-white text-sm"></span></p>
+                    </div>
+                    <div id="payCategoryBadge" class="text-[10px] uppercase font-bold px-2.5 py-1.5 rounded-lg border">
+                        <!-- Dynamic Badge -->
+                    </div>
+                </div>
+            </div>
+            <form onsubmit="handlePayment(event)" class="space-y-4">
+                <input type="hidden" id="payDebtId">
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Payment Amount</label>
+                    <div class="grid grid-cols-3 gap-2 mb-3">
+                        <button type="button" onclick="setQuickPay(500)" class="bg-gray-50 border border-gray-200 py-2.5 rounded-xl font-bold text-navy-900 text-sm active:bg-gray-200 transition-colors">+500</button>
+                        <button type="button" onclick="setQuickPay(1000)" class="bg-gray-50 border border-gray-200 py-2.5 rounded-xl font-bold text-navy-900 text-sm active:bg-gray-200 transition-colors">+1000</button>
+                        <button type="button" onclick="setQuickPayFull()" class="bg-green-50 border border-green-200 text-green-700 py-2.5 rounded-xl font-bold text-sm active:bg-green-100 transition-colors">Full Pay</button>
+                    </div>
+                    <div class="relative">
+                        <span class="absolute left-4 top-1/2 -translate-y-1/2 text-navy-900 font-black">K</span>
+                        <input type="number" id="payAmount" required min="1" inputmode="numeric" placeholder="0" class="w-full bg-appbg border border-gray-200 rounded-xl py-4 pl-10 pr-4 text-xl text-navy-900 font-black focus:ring-2 focus:ring-green-500 outline-none">
+                    </div>
+                </div>
+                <button type="submit" class="w-full bg-green-500 text-white font-black text-lg py-4 rounded-xl mt-4 active:scale-[0.98] transition-transform shadow-lg shadow-green-500/30 flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-check-circle"></i> Confirm Payment
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal: Detail & History -->
+    <div id="detailModal" class="modal-bg fixed inset-0 z-50 bg-navy-900/60 backdrop-blur-sm flex items-end sm:items-center justify-center">
+        <div class="modal-content bg-appbg w-full h-[90vh] sm:h-[80vh] sm:w-[450px] rounded-t-3xl sm:rounded-3xl flex flex-col overflow-hidden shadow-2xl">
+            <div class="bg-white px-6 py-4 flex justify-between items-center border-b border-gray-100 sticky top-0 z-20">
+                <h3 class="text-xl font-black text-navy-900 truncate flex-1" id="detailName">Name</h3>
+                <button type="button" onclick="closeModals()" class="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center text-gray-500 active:bg-gray-200 ml-2">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            
+            <div class="flex-1 overflow-y-auto p-5 space-y-5 relative">
+                <div class="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 relative overflow-hidden">
+                    <div class="flex justify-between items-start mb-5">
+                        <div class="flex items-center gap-1.5 flex-wrap">
+                            <span id="detailStatus" class="px-2.5 py-1 bg-red-50 text-red-600 border border-red-200 rounded text-[10px] font-black uppercase tracking-widest">Unpaid</span>
+                            <span id="detailCategory" class="px-2.5 py-1 rounded text-[10px] font-black uppercase tracking-widest">Canteen</span>
+                        </div>
+                        <div class="text-right">
+                            <p class="text-gray-400 text-[10px] uppercase tracking-widest font-bold mb-0.5">Year</p>
+                            <p id="detailYear" class="font-black text-navy-900 text-sm">Year 6</p>
+                        </div>
+                    </div>
+                    
+                    <div class="grid grid-cols-2 gap-4 border-t border-gray-100 pt-4">
+                        <div>
+                            <p class="text-gray-400 text-[10px] uppercase font-bold tracking-widest mb-1">Total Borrowed</p>
+                            <p class="text-lg font-black text-navy-900" id="detailTotal">K 0</p>
+                        </div>
+                        <div>
+                            <p class="text-gray-400 text-[10px] uppercase font-bold tracking-widest mb-1">Total Paid</p>
+                            <p class="text-lg font-black text-green-500" id="detailPaid">K 0</p>
+                        </div>
+                    </div>
+                    <div class="mt-4 bg-navy-900 rounded-xl p-4 flex justify-between items-center shadow-inner">
+                        <p class="text-xs uppercase font-bold tracking-widest text-gold-400">Current Balance</p>
+                        <p class="text-2xl font-black text-white" id="detailBalance">K 0</p>
+                    </div>
+                </div>
+
+                <div>
+                    <h4 class="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3 ml-1 flex items-center gap-2">
+                        <i class="fa-solid fa-clock-rotate-left"></i> Payment History
+                    </h4>
+                    <div id="detailHistoryContainer" class="space-y-3"></div>
+                </div>
+            </div>
+
+            <div class="p-4 bg-white border-t border-gray-100 pb-safe-nav flex gap-3 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
+                <button id="detailAddBtn" onclick="openIncreaseFromDetails()" class="w-1/3 bg-red-50 text-red-600 font-bold py-4 rounded-xl active:scale-[0.98] transition-transform border border-red-200 flex flex-col items-center justify-center gap-1 leading-tight">
+                    <i class="fa-solid fa-plus text-sm"></i>
+                    <span class="text-xs">Add Debt</span>
+                </button>
+                <button id="detailPayBtn" onclick="openPaymentFromDetails()" class="w-2/3 bg-navy-900 text-gold-400 font-black py-4 rounded-xl active:scale-[0.98] transition-transform shadow-lg shadow-navy-900/20 text-lg">
+                    Pay Now
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="appToast" class="fixed bottom-20 left-1/2 transform -translate-x-1/2 bg-navy-900 text-white px-6 py-3 rounded-full text-sm font-bold shadow-2xl z-[70] hidden flex items-center gap-3 whitespace-nowrap border border-white/10">
+        <i id="toastIcon" class="fa-solid fa-check-circle text-green-400 text-lg"></i>
+        <span id="toastMsg">Success</span>
+    </div>
+
+    <script>
+        // ⚠️ သင့်၏ Web App URL အသစ်ကို ဤနေရာတွင် အစားထိုးပါ ⚠️
+        const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxiu3KFyBXVb1Kc8LijM6ML1sQxkzEQh0JY6lVMKCwFd7vEnEgz00OrdFRyciZMA34j/exec';
+
+        let debtsData = [];
+        let paymentsData = [];
+        let currentTab = 'unpaid'; 
+        let currentDetailDebtId = null;
+
+        window.onload = fetchData;
+
+        async function fetchData() {
+            const refreshIcon = document.getElementById('refreshIcon');
+            const errorState = document.getElementById('errorState');
+            
+            refreshIcon.classList.add('spin');
+            errorState.classList.add('hidden');
+            
+            if(debtsData.length === 0) {
+                document.getElementById('loadingState').classList.remove('hidden');
+                document.getElementById('debtsContainer').innerHTML = '';
+                document.getElementById('emptyState').classList.add('hidden');
+            }
+
+            try {
+                const response = await fetch(SCRIPT_URL);
+                if (response.status === 404) {
+                    throw new Error("404 Error: Google Script URL အလုပ်မလုပ်တော့ပါ။ ကျေးဇူးပြု၍ Apps Script ကို 'New version' ဖြင့် ပြန်လည် Deploy လုပ်ပြီး URL အသစ်ချိတ်ပေးပါ။");
+                }
+                if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
+                
+                const text = await response.text();
+                let data;
+                try {
+                    data = JSON.parse(text);
+                } catch(e) {
+                    throw new Error("Invalid response from server. Check URL or Sheet headers.");
+                }
+                
+                if (data.status === 'error') throw new Error(data.message);
+
+                debtsData = data.debts || [];
+                paymentsData = data.payments || [];
+                
+                showToast("Data Synced Successfully!", "success");
+                renderDebts();
+            } catch (error) {
+                console.error("Fetch error:", error);
+                document.getElementById('loadingState').classList.add('hidden');
+                errorState.classList.remove('hidden');
+                
+                // Demo Data ဖော်ပြပေးရန် (URL အလုပ်မလုပ်ပါက Preview ကြည့်နိုင်ရန်)
+                if(error.message.includes("404") || error.message.includes("fetch")) {
+                    debtsData = [
+                        { id: 'D-DEMO1', date: new Date().toISOString(), name: 'Mg Mg', year: 'Year 9A', total_debt: 1500, paid_amount: 500, balance: 1000, status: 'Unpaid', category: 'Canteen' },
+                        { id: 'D-DEMO2', date: new Date().toISOString(), name: 'Su Su', year: 'Staff', total_debt: 3000, paid_amount: 3000, balance: 0, status: 'Paid', category: 'Kitchen' }
+                    ];
+                    renderDebts();
+                    errorState.classList.add('hidden');
+                    showToast("Offline Demo Mode (Check your URL)", "error");
+                } else {
+                    document.getElementById('errorText').innerText = error.message;
+                }
+            } finally {
+                refreshIcon.classList.remove('spin');
+            }
+        }
+
+        function syncWithServer(payload, successMessage) {
+            fetch(SCRIPT_URL, {
+                method: 'POST',
+                mode: 'no-cors',
+                headers: { 'Content-Type': 'text/plain' },
+                body: JSON.stringify(payload)
+            }).then(() => {
+                showToast(successMessage, 'success');
+                setTimeout(fetchData, 2000); 
+            }).catch(error => {
+                showToast("Background sync failed. Check connection.", "error");
+            });
+        }
+
+        function setDebtTab(tab) {
+            currentTab = tab;
+            ['unpaid', 'paid', 'all'].forEach(t => {
+                const el = document.getElementById(`tab-${t}`);
+                if (t === tab) {
+                    el.classList.add('border-gold-400', 'text-gold-400');
+                    el.classList.remove('border-transparent', 'text-gray-400');
+                } else {
+                    el.classList.remove('border-gold-400', 'text-gold-400');
+                    el.classList.add('border-transparent', 'text-gray-400');
+                }
+            });
+            renderDebts();
+        }
+
+        function renderDebts() {
+            const container = document.getElementById('debtsContainer');
+            const emptyState = document.getElementById('emptyState');
+            const errorState = document.getElementById('errorState');
+            
+            if(!errorState.classList.contains('hidden')) return; // Don't render if error
+            
+            document.getElementById('loadingState').classList.add('hidden');
+
+            const sq = document.getElementById('searchInput').value.toLowerCase();
+            const typeFilter = document.getElementById('typeFilter').value; // all, Canteen, Kitchen
+            const yr = document.getElementById('yearFilter').value;
+            const srt = document.getElementById('sortSelect').value;
+
+            // Apply Filters
+            let filtered = debtsData.filter(d => {
+                if (!d.id || String(d.id).trim() === '') return false;
+                
+                // Name Search
+                const mSearch = (d.name || '').toLowerCase().includes(sq);
+                // Year Filter
+                const mYear = yr === 'all' || (d.year || '') === yr;
+                
+                // Type Filter (Canteen / Kitchen)
+                const dCat = d.category || 'Canteen';
+                const mType = typeFilter === 'all' || dCat === typeFilter;
+                
+                // Unpaid / Paid Tab Filter
+                const bal = parseFloat(d.balance) || 0;
+                const isPaid = (d.status || '').toLowerCase() === 'paid' || bal <= 0;
+                
+                let mTab = true;
+                if (currentTab === 'unpaid') mTab = !isPaid;
+                if (currentTab === 'paid') mTab = isPaid;
+                
+                return mSearch && mYear && mType && mTab;
+            });
+
+            // Apply Sort
+            if (srt === 'amount_high') filtered.sort((a, b) => (parseFloat(b.balance)||0) - (parseFloat(a.balance)||0));
+            else if (srt === 'amount_low') filtered.sort((a, b) => (parseFloat(a.balance)||0) - (parseFloat(b.balance)||0));
+            else {
+                // Newest first (by ID parsing if date is wonky, or simple reverse since it's append-only)
+                filtered.reverse(); 
+            }
+
+            container.innerHTML = '';
+            
+            if (filtered.length === 0) {
+                emptyState.classList.remove('hidden');
+            } else {
+                emptyState.classList.add('hidden');
+                
+                filtered.forEach(debt => {
+                    const bal = parseFloat(debt.balance) || 0;
+                    const isPaid = (debt.status || '').toLowerCase() === 'paid' || bal <= 0;
+                    const dCat = debt.category || 'Canteen';
+                    
+                    const card = document.createElement('div');
+                    // Style differently if paid or unpaid
+                    card.className = `bg-white rounded-2xl p-4 shadow-sm border-2 cursor-pointer active:scale-[0.98] transition-transform ${isPaid ? 'border-green-400/50 bg-green-50/10' : 'border-transparent border-l-red-500'}`;
+                    card.onclick = () => openDebtDetails(debt.id);
+                    
+                    // Generate Category Badge
+                    let catBadge = '';
+                    if (dCat === 'Kitchen') {
+                        catBadge = `<span class="text-[10px] uppercase tracking-widest font-black bg-orange-50 text-orange-600 border border-orange-200 px-2 py-0.5 rounded shadow-sm"><i class="fa-solid fa-bowl-food mr-1"></i>Kitchen</span>`;
+                    } else {
+                        catBadge = `<span class="text-[10px] uppercase tracking-widest font-black bg-blue-50 text-blue-600 border border-blue-200 px-2 py-0.5 rounded shadow-sm"><i class="fa-solid fa-utensils mr-1"></i>Canteen</span>`;
+                    }
+
+                    card.innerHTML = `
+                        <div class="flex justify-between items-start mb-3">
+                            <div>
+                                <h3 class="font-black text-navy-900 text-lg tracking-tight leading-tight">${debt.name || 'Unknown'}</h3>
+                                <div class="flex items-center gap-2 mt-1.5 flex-wrap">
+                                    <span class="text-[10px] uppercase tracking-widest font-bold bg-gray-100 text-gray-500 px-2 py-0.5 rounded border border-gray-200">${debt.year || '-'}</span>
+                                    ${catBadge}
+                                </div>
+                            </div>
+                            <div class="text-right">
+                                <p class="text-[10px] uppercase font-bold text-gray-400 mb-0.5 tracking-wider">Balance</p>
+                                <p class="font-black text-xl ${isPaid ? 'text-green-500' : 'text-red-500'}">K ${formatMoney(bal)}</p>
+                            </div>
+                        </div>
+                        <div class="flex justify-between items-end border-t border-gray-100 pt-3">
+                            <div class="text-[10px] text-gray-500 uppercase tracking-wide font-bold">
+                                Tot: <span class="text-navy-900 mr-2">K ${formatMoney(debt.total_debt)}</span> 
+                                Pd: <span class="text-green-500">K ${formatMoney(debt.paid_amount)}</span>
+                            </div>
+                            
+                            <div class="flex gap-2">
+                                <button onclick="event.stopPropagation(); openIncreaseModal('${debt.id}')" class="bg-red-50 text-red-600 px-3 py-1.5 rounded-xl text-xs font-bold border border-red-200 active:bg-red-100 transition-colors flex items-center gap-1">
+                                    <i class="fa-solid fa-plus"></i> Add
+                                </button>
+                                ${!isPaid ? `
+                                    <button onclick="event.stopPropagation(); openPaymentModal('${debt.id}')" class="bg-navy-900 text-gold-400 px-4 py-1.5 rounded-xl text-xs font-black shadow-md active:bg-navy-800 transition-colors">
+                                        Pay
+                                    </button>
+                                ` : `
+                                    <div class="bg-green-100 text-green-700 px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1 border border-green-200">
+                                        <i class="fa-solid fa-check"></i> Paid
+                                    </div>
+                                `}
+                            </div>
+                        </div>
+                    `;
+                    container.appendChild(card);
+                });
+            }
+        }
+
+        function handleAddDebt(e) {
+            e.preventDefault();
+            
+            const selectedCategory = document.getElementById('addCategory').value || 'Canteen';
+            
+            const newDebt = {
+                id: 'D-' + Date.now(),
+                date: new Date().toISOString(),
+                name: document.getElementById('addName').value,
+                year: document.getElementById('addYear').value,
+                total_debt: parseFloat(document.getElementById('addAmount').value),
+                paid_amount: 0,
+                balance: parseFloat(document.getElementById('addAmount').value),
+                status: 'Unpaid',
+                category: selectedCategory
+            };
+
+            debtsData.unshift(newDebt);
+            document.getElementById('addDebtForm').reset();
+            
+            // Auto switch filters to see the new record
+            document.getElementById('typeFilter').value = selectedCategory;
+            setDebtTab('unpaid'); 
+            
+            closeModals();
+            showToast('Saving bill...', 'loading');
+            syncWithServer({ action: 'addDebt', data: newDebt }, 'Bill saved!');
+        }
+
+        function handlePayment(e) {
+            e.preventDefault();
+            const debtId = document.getElementById('payDebtId').value;
+            const amt = parseFloat(document.getElementById('payAmount').value);
+            
+            const newPayment = {
+                id: 'P-' + Date.now(),
+                debt_id: debtId,
+                date: new Date().toISOString(),
+                amount: amt
+            };
+
+            const idx = debtsData.findIndex(d => String(d.id) === String(debtId));
+            if(idx > -1) {
+                debtsData[idx].paid_amount = (parseFloat(debtsData[idx].paid_amount) || 0) + amt;
+                debtsData[idx].balance = (parseFloat(debtsData[idx].balance) || 0) - amt;
+                if(debtsData[idx].balance <= 0) debtsData[idx].status = 'Paid';
+            }
+            paymentsData.unshift(newPayment);
+            
+            renderDebts();
+            closeModals();
+            showToast('Processing...', 'loading');
+            syncWithServer({ action: 'addPayment', data: newPayment }, 'Payment confirmed!');
+        }
+
+        function handleIncreaseDebt(e) {
+            e.preventDefault();
+            const debtId = document.getElementById('incDebtId').value;
+            const amt = parseFloat(document.getElementById('incAmount').value);
+            
+            const idx = debtsData.findIndex(d => String(d.id) === String(debtId));
+            if(idx > -1) {
+                debtsData[idx].total_debt = (parseFloat(debtsData[idx].total_debt) || 0) + amt;
+                debtsData[idx].balance = (parseFloat(debtsData[idx].balance) || 0) + amt;
+                if(debtsData[idx].balance > 0) debtsData[idx].status = 'Unpaid';
+            }
+            
+            setDebtTab('unpaid');
+            closeModals();
+            showToast('Updating...', 'loading');
+            syncWithServer({ action: 'increaseDebt', data: { debt_id: debtId, amount: amt } }, 'Bill increased!');
+        }
+
+        function openAddModal() {
+            // Default select the radio based on current filter if applicable
+            const tFilter = document.getElementById('typeFilter').value;
+            if(tFilter === 'Kitchen') {
+                document.querySelector('input[value="Kitchen"]').checked = true;
+                document.getElementById('addCategory').value = 'Kitchen';
+            } else {
+                document.querySelector('input[value="Canteen"]').checked = true;
+                document.getElementById('addCategory').value = 'Canteen';
+            }
+
+            document.getElementById('addModal').classList.add('active');
+            setTimeout(() => document.getElementById('addName').focus(), 300);
+        }
+
+        function openPaymentModal(id) {
+            const debt = debtsData.find(d => String(d.id) === String(id));
+            if (!debt) return;
+            
+            document.getElementById('payDebtId').value = debt.id;
+            document.getElementById('payStudentName').innerText = debt.name;
+            document.getElementById('payBalanceAmount').innerText = 'K ' + formatMoney(debt.balance);
+            
+            const catBadge = document.getElementById('payCategoryBadge');
+            const dCat = debt.category || 'Canteen';
+            if(dCat === 'Kitchen') {
+                catBadge.innerHTML = '<i class="fa-solid fa-bowl-food"></i> KITCHEN DEBT';
+                catBadge.className = 'text-[10px] uppercase font-black px-2.5 py-1.5 rounded-lg border border-orange-400 bg-orange-500/20 text-orange-300 shadow-sm';
+            } else {
+                catBadge.innerHTML = '<i class="fa-solid fa-utensils"></i> CANTEEN DEBT';
+                catBadge.className = 'text-[10px] uppercase font-black px-2.5 py-1.5 rounded-lg border border-blue-400 bg-blue-500/20 text-blue-200 shadow-sm';
+            }
+
+            document.getElementById('payAmount').value = ''; 
+            document.getElementById('paymentModal').classList.add('active');
+            setTimeout(() => document.getElementById('payAmount').focus(), 300);
+        }
+
+        function openIncreaseModal(id) {
+            const debt = debtsData.find(d => String(d.id) === String(id));
+            if (!debt) return;
+            
+            document.getElementById('incDebtId').value = debt.id;
+            document.getElementById('incStudentName').innerText = debt.name;
+            
+            const incBadge = document.getElementById('incCategoryBadge');
+            const dCat = debt.category || 'Canteen';
+            if(dCat === 'Kitchen') {
+                incBadge.innerHTML = '<i class="fa-solid fa-bowl-food block text-xl mb-1"></i> Kitchen';
+                incBadge.className = 'text-[10px] font-black uppercase px-4 py-2 rounded-xl bg-orange-100 text-orange-700 border-2 border-orange-200 text-center shadow-sm';
+            } else {
+                incBadge.innerHTML = '<i class="fa-solid fa-utensils block text-xl mb-1"></i> Canteen';
+                incBadge.className = 'text-[10px] font-black uppercase px-4 py-2 rounded-xl bg-blue-100 text-blue-700 border-2 border-blue-200 text-center shadow-sm';
+            }
+            
+            document.getElementById('incAmount').value = ''; 
+            document.getElementById('increaseModal').classList.add('active');
+            setTimeout(() => document.getElementById('incAmount').focus(), 300);
+        }
+
+        function openDebtDetails(id) {
+            const debt = debtsData.find(d => String(d.id) === String(id));
+            if (!debt) return;
+            
+            currentDetailDebtId = id;
+            const bal = parseFloat(debt.balance) || 0;
+            const isPaid = (debt.status || '').toLowerCase() === 'paid' || bal <= 0;
+            const dCat = debt.category || 'Canteen';
+
+            document.getElementById('detailName').innerText = debt.name;
+            document.getElementById('detailYear').innerText = debt.year;
+            
+            const catEl = document.getElementById('detailCategory');
+            if (dCat === 'Kitchen') {
+                catEl.innerHTML = '<i class="fa-solid fa-bowl-food mr-1"></i> Kitchen';
+                catEl.className = 'px-2.5 py-1 bg-orange-50 text-orange-600 border border-orange-200 rounded text-[10px] font-black uppercase tracking-widest shadow-sm';
+            } else {
+                catEl.innerHTML = '<i class="fa-solid fa-utensils mr-1"></i> Canteen';
+                catEl.className = 'px-2.5 py-1 bg-blue-50 text-blue-600 border border-blue-200 rounded text-[10px] font-black uppercase tracking-widest shadow-sm';
+            }
+
+            const statusEl = document.getElementById('detailStatus');
+            if(isPaid) {
+                statusEl.innerText = 'Paid Fully';
+                statusEl.className = 'px-2.5 py-1 bg-green-100 text-green-700 border border-green-200 rounded text-[10px] font-black uppercase tracking-widest shadow-sm';
+            } else {
+                statusEl.innerText = 'Unpaid';
+                statusEl.className = 'px-2.5 py-1 bg-red-50 text-red-600 border border-red-200 rounded text-[10px] font-black uppercase tracking-widest shadow-sm';
+            }
+
+            document.getElementById('detailTotal').innerText = 'K ' + formatMoney(debt.total_debt);
+            document.getElementById('detailPaid').innerText = 'K ' + formatMoney(debt.paid_amount);
+            document.getElementById('detailBalance').innerText = 'K ' + formatMoney(bal);
+            
+            const payBtn = document.getElementById('detailPayBtn');
+            if(isPaid) payBtn.classList.add('hidden');
+            else payBtn.classList.remove('hidden');
+
+            const hContainer = document.getElementById('detailHistoryContainer');
+            hContainer.innerHTML = '';
+            
+            const relPayments = paymentsData.filter(p => String(p.debt_id) === String(id)).sort((a, b) => new Date(b.date) - new Date(a.date));
+            
+            if(relPayments.length === 0) {
+                hContainer.innerHTML = '<div class="bg-gray-50 p-4 rounded-xl border border-gray-200 text-center"><p class="text-sm text-gray-500 font-medium"><i class="fa-solid fa-ghost mr-2"></i>No payments yet.</p></div>';
+            } else {
+                relPayments.forEach(p => {
+                    hContainer.innerHTML += `
+                        <div class="bg-white p-3 rounded-xl border border-gray-100 shadow-sm flex justify-between items-center transition-all hover:shadow-md">
+                            <div class="flex items-center gap-3">
+                                <div class="w-9 h-9 rounded-full bg-green-50 text-green-500 flex items-center justify-center text-sm border border-green-100">
+                                    <i class="fa-solid fa-check"></i>
+                                </div>
+                                <div>
+                                    <p class="text-xs font-black text-navy-900 tracking-wide uppercase">Payment Made</p>
+                                    <p class="text-[10px] text-gray-400 font-bold">${formatDate(p.date)}</p>
+                                </div>
+                            </div>
+                            <p class="font-black text-green-500 text-sm bg-green-50 px-2 py-1 rounded border border-green-100">+ K ${formatMoney(p.amount)}</p>
+                        </div>
+                    `;
+                });
+            }
+
+            document.getElementById('detailModal').classList.add('active');
+        }
+
+        function openPaymentFromDetails() {
+            closeModals();
+            setTimeout(() => { if(currentDetailDebtId) openPaymentModal(currentDetailDebtId); }, 300);
+        }
+
+        function openIncreaseFromDetails() {
+            closeModals();
+            setTimeout(() => { if(currentDetailDebtId) openIncreaseModal(currentDetailDebtId); }, 300);
+        }
+
+        function setQuickPay(val) { document.getElementById('payAmount').value = val; }
+        
+        function setQuickPayFull() {
+            const d = debtsData.find(d => String(d.id) === String(document.getElementById('payDebtId').value));
+            if(d) document.getElementById('payAmount').value = d.balance;
+        }
+
+        function closeModals() {
+            document.querySelectorAll('.modal-bg').forEach(m => m.classList.remove('active'));
+        }
+
+        function formatMoney(num) {
+            return (parseFloat(num) || 0).toLocaleString('en-US');
+        }
+
+        function formatDate(str) {
+            if(!str) return '-';
+            const date = new Date(str);
+            if (isNaN(date.getTime())) return str;
+            return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute:'2-digit' });
+        }
+
+        function showToast(msg, type = 'success') {
+            const t = document.getElementById('appToast');
+            document.getElementById('toastMsg').innerText = msg;
+            
+            const i = document.getElementById('toastIcon');
+            if (type === 'loading') i.className = 'fa-solid fa-circle-notch spin text-gold-400 text-lg';
+            else if (type === 'error') i.className = 'fa-solid fa-circle-exclamation text-red-400 text-lg';
+            else i.className = 'fa-solid fa-check-circle text-green-400 text-lg';
+            
+            t.classList.remove('hidden');
+            t.classList.add('toast-enter');
+            
+            if (type !== 'loading') {
+                setTimeout(() => { t.classList.remove('toast-enter'); t.classList.add('hidden'); }, 3000);
+            }
+        }
+    </script>
+</body>
+</html>
