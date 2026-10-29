@@ -117,3 +117,10 @@ vm.runInContext('updateDashboard()',frontend);
 assert.equal(elements.dashTodayUnpaid.innerText,'K 300');
 assert.equal(elements.dashTodayBorrowers.innerText,1);
 console.log('PASS: daily borrowing amounts, unique debt counts, historical dates and category filters.');
+vm.runInContext(`
+const sample = {status:'success',debts:[{id:'D',name:'Test',total_debt:100}],payments:[{id:'P',debt_id:'D',amount:20}]};
+if (!savedChangeMatches({action:'addPayment',data:{id:'P',debt_id:'D',amount:20}},sample)) throw Error('Readback failed');
+if (savedChangeMatches({action:'addPayment',data:{id:'P',debt_id:'D',amount:30}},sample)) throw Error('False confirmation');
+if (savedChangeMatches({action:'deleteTransaction',data:{kind:'payment',id:'P'}},sample)) throw Error('False delete confirmation');
+`,frontend);
+console.log('PASS: read-back confirms matching writes and rejects mismatched or undeleted records.');

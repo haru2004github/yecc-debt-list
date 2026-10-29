@@ -730,23 +730,62 @@
             document.getElementById('dashTodayPayers').innerText = todayPayers;
         }
 
+        let lastSaveError = '';
+        function savedChangeMatches(payload, snapshot) {
+            if (snapshot.status !== 'success') return false;
+            const d = payload.data;
+            const debts = snapshot.debts || [], payments = snapshot.payments || [];
+            const debt = debts.find(r => String(r.debt_id || r.id) === String(d.debt_id || d.id));
+            const payment = payments.find(r => String(r.payment_id || r.pyament_id || r.id) === String(d.id));
+            const amount = p => Number(p.amount_paid ?? p.amount);
+            const date = p => new Date(p.payment_date || p.date).getTime();
+            if (payload.action === 'addDebt') return !!debt && Number(debt.total_debt) === Number(d.total_debt) && debt.name === d.name;
+            if (payload.action === 'addPayment' || payload.action === 'increaseDebt') return !!payment && String(payment.debt_id) === String(d.debt_id) && amount(payment) === (payload.action === 'increaseDebt' ? -Number(d.amount) : Number(d.amount));
+            if (payload.action === 'updateDebtDetails') return !!debt && ['name','year','category'].every(k => debt[k] === d[k]);
+            if (payload.action === 'deleteTransaction') return d.kind === 'initial' ? !debt : !payment;
+            if (payload.action === 'updateTransaction') {
+                if (d.kind !== 'initial') return !!payment && amount(payment) === (d.expected_amount < 0 ? -Number(d.amount) : Number(d.amount)) && date(payment) === new Date(d.date).getTime();
+                const increases = payments.filter(p => String(p.debt_id) === String(d.id) && amount(p) < 0).reduce((sum,p) => sum - amount(p),0);
+                return !!debt && Number(debt.total_debt) - increases === Number(d.amount) && new Date(debt.date).getTime() === new Date(d.date).getTime();
+            }
+            return false;
+        }
+
         async function syncWithServer(payload, successMessage) {
+            lastSaveError = '';
+            let rejected = false;
             try {
                 const response = await fetch(SCRIPT_URL, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'text/plain' },
-                    body: JSON.stringify(payload)
+                    method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify(payload)
                 });
-                if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
                 const result = await response.json();
-                if (result.status !== 'success') throw new Error(result.message || 'Save failed');
+                if (result.status !== 'success') {
+                    rejected = true;
+                    throw new Error(result.message || 'Server rejected the change');
+                }
                 await fetchData();
                 showToast(successMessage, 'success');
                 return true;
             } catch (error) {
-                // Reconcile optimistic changes; a lost response does not prove a failed write.
+                // Never retry a write automatically: a lost response may still mean it saved.
+                if (!rejected) {
+                    try {
+                        const response = await fetch(SCRIPT_URL + '?verify=' + Date.now(), {cache: 'no-store'});
+                        if (!response.ok) throw new Error('Verification unavailable');
+                        const snapshot = await response.json();
+                        if (savedChangeMatches(payload, snapshot)) {
+                            normalizeSheetData(snapshot); updateDashboard(); renderDebts();
+                            showToast(successMessage, 'success');
+                            return true;
+                        }
+                    } catch (verificationError) { console.error('Read-back failed:', verificationError); }
+                }
                 await fetchData();
-                showToast('Save not confirmed. Refresh and check before retrying.', 'error');
+                lastSaveError = rejected
+                    ? 'Save rejected: ' + error.message + (String(error.message).includes('Invalid action') ? ' — Deploy the latest Code.gs as a new version.' : '')
+                    : 'Save could not be verified (' + error.message + '). Refresh and check the record before retrying.';
+                showToast(lastSaveError, 'error');
                 console.error('Save confirmation failed:', error);
                 return false;
             }
@@ -1016,8 +1055,9 @@
 
             // 🔑 FIX 1: Push increase record to local paymentsData immediately
             // (mirrors what backend saves in Payments sheet as negative amount)
+            const increaseId = 'INC-' + Date.now();
             paymentsData.unshift({
-                id: 'INC-' + Date.now(),
+                id: increaseId,
                 debt_id: debtId,
                 date: nowIso,
                 amount: -Math.abs(amt)
@@ -1028,7 +1068,7 @@
             closeModals();
 
             showToast('Updating...', 'loading');
-            syncWithServer({ action: 'increaseDebt', data: { debt_id: debtId, amount: amt, date: nowIso } }, 'Bill increased!');
+            syncWithServer({ action: 'increaseDebt', data: { id: increaseId, debt_id: debtId, amount: amt, date: nowIso } }, 'Bill increased!');
         }
 
         function openAddModal() {
@@ -1291,7 +1331,7 @@
                 }}, 'Student details updated');
                 if (ok) dismiss();
                 else {
-                    modal.querySelector('#profileError').textContent = 'Save not confirmed. Close and refresh before retrying. Check the Apps Script deployment.';
+                    modal.querySelector('#profileError').textContent = lastSaveError;
                     cancel.disabled = false;
                 }
             };
@@ -1361,7 +1401,7 @@
                 }}, deleting ? 'Transaction deleted' : 'Transaction updated');
                 if (ok) { modal.remove(); closeModals(); }
                 else {
-                    modal.querySelector('#transactionError').textContent = 'Save not confirmed. Close and refresh before retrying. Check that the new Apps Script is deployed.';
+                    modal.querySelector('#transactionError').textContent = lastSaveError;
                     modal.querySelector('[data-action="cancel"]').disabled = false;
                 }
             }
